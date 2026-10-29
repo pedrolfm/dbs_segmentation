@@ -41,14 +41,7 @@ This is an example of scripted loadable module bundled in an extension.
 See more information in <a href="https://github.com/organization/projectname#DBS">module documentation</a>.
 """)
         self.parent.helpText = _("""
-This module provides a fully automatic pipeline for tube segmentation from 3D MRI-image volumes.
-
-`Usage`
-1. Load an input volume.  
-2. (Optional) Adjust parameters such as thresholds, aspect ratio, or smoothing iterations.  
-3. (Optional) Enable *Extract Centerline* to generate a markups curve.  
-4. Click 'Apply' to run the full pipeline.  
-
+        This module provides a fully automatic pipeline for tube segmentation from 3D MRI-image volumes.
 """)
     
         # TODO: replace with organization, grant and thanks
@@ -128,7 +121,7 @@ class DBSParameterNode:
     inputVolume: vtkMRMLScalarVolumeNode
     targetMarkup: vtkMRMLMarkupsFiducialNode
     segmentName: str = "Segment_1"
-    doCenterline: bool = False
+
     
 
 #
@@ -255,8 +248,7 @@ class DBSWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.logic.process(
                 inputVolume=p.inputVolume,
                 targetMarkup=p.targetMarkup,
-                segment_name=p.segmentName,
-                do_centerline=p.doCenterline
+                segment_name=p.segmentName
             )
 
 #
@@ -282,7 +274,7 @@ class DBSLogic(ScriptedLoadableModuleLogic):
                 inputVolume: vtkMRMLScalarVolumeNode,
                 targetMarkup: vtkMRMLMarkupsFiducialNode,
                 segment_name: str = "Segment_1",
-                do_centerline: bool = False):
+                ):
         if not inputVolume:
             raise ValueError("Input volume is invalid")
 
@@ -291,13 +283,18 @@ class DBSLogic(ScriptedLoadableModuleLogic):
         logging.info("Pipeline started")
 
         #crop image
+        
         roi=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsROINode")
-        roi.SetSize(70,70,20)
+        roi.SetSize(30,90,20)
 
         ijkToRas = vtk.vtkMatrix4x4()
         inputVolume.GetIJKToRASMatrix(ijkToRas)
         point_RAS = [0, 0, 0, 1]
-        ijkToRas.MultiplyPoint([130,58,7,1.0], point_RAS)
+        ijkToRas.MultiplyPoint([130,78,7,1.0], point_RAS)
+
+        roi.SetCenter(point_RAS[:3])
+        roi.SetSize(20, 90, 20)          # mm, along R, A, S
+
         ijkToRas.SetElement(0,3,point_RAS[0])
         ijkToRas.SetElement(1,3,point_RAS[1])
         ijkToRas.SetElement(2,3,point_RAS[2])
@@ -311,11 +308,18 @@ class DBSLogic(ScriptedLoadableModuleLogic):
 
         # import your helper from DBS/Lib/dbs_segmentation.py
         from Lib import dbs_segmentation
-        importlib.reload(dbs_segmentation)  # handy during development
+        importlib.reload(dbs_segmentation) 
+
+        # import fiducial reference stl file
+        moduleDir = os.path.dirname(__file__)
+        #stlFilePath = os.path.join(moduleDir, "Resources", "tube-Body001.stl")
+        stlFilePath = os.path.join(moduleDir, "Resources", "ClearPointFiducial.vtk")
+
         res,projectedError = dbs_segmentation.run_seg_pipeline(
             croppedImage,
+            # inputVolume,
             targetMarkup,
-            do_centerline=do_centerline
+            stlFilePath
         )
         print(projectedError)
         logging.info(f"Pipeline finished in {time.time()-start:.2f}s")
